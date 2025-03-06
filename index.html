@@ -11,18 +11,24 @@
         table { width: 100%; border-collapse: collapse; margin-top: 20px; }
         th, td { border: 1px solid #ddd; padding: 8px; text-align: center; }
         th { background-color: #4CAF50; color: white; }
+        .saldo-negativo { color: red; }
+        .saldo-positivo { color: green; }
+        button { margin-top: 20px; padding: 10px 20px; background-color: #4CAF50; color: white; border: none; cursor: pointer; }
+        button:hover { background-color: #45a049; }
     </style>
 </head>
 <body>
 
     <h2>Controle de Folgas dos Motoristas</h2>
     <input type="file" id="fileInput" />
+    <button id="exportBtn">Exportar para Excel</button>
     <table id="resultTable">
         <thead>
             <tr>
                 <th>Motorista</th>
                 <th>Mês</th>
                 <th>Folgas Tiradas</th>
+                <th>Saldo de Folgas</th>
             </tr>
         </thead>
         <tbody></tbody>
@@ -114,11 +120,15 @@
                     let folgasTiradas = folgas[motorista][mesAno] || 0;
                     totalFolgas += folgasTiradas;
 
+                    let saldo = 4 - folgasTiradas;  // O saldo é a diferença entre o máximo de 4 folgas e as tiradas
+                    let saldoClasse = saldo < 0 ? "saldo-negativo" : "saldo-positivo"; // Definindo a classe com base no saldo
+
                     let tr = document.createElement("tr");
                     tr.innerHTML = `
                         <td>${motorista}</td>
                         <td>${mesAno}</td>
                         <td>${folgasTiradas}</td>
+                        <td class="${saldoClasse}">${saldo}</td>
                     `;
                     tbody.appendChild(tr);
                 });
@@ -129,10 +139,17 @@
                     <td>${motorista}</td>
                     <td><strong>Total de Folgas</strong></td>
                     <td>${totalFolgas}</td>
+                    <td></td>
                 `;
                 tbody.appendChild(trTotal);
             }
         }
+
+        // Função para exportar a tabela para Excel
+        document.getElementById('exportBtn').addEventListener('click', function() {
+            let wb = XLSX.utils.table_to_book(document.getElementById('resultTable'), { sheet: 'Folgas' });
+            XLSX.writeFile(wb, 'Controle_de_Folgas.xlsx');
+        });
     </script>
 
 </body>
