@@ -8,20 +8,23 @@
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; }
         h2 { text-align: center; }
-        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        input, button { margin: 10px 0; padding: 10px; font-size: 16px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; border-radius: 20px;}
         th, td { border: 1px solid #ddd; padding: 8px; text-align: center; }
-        th { background-color: #4CAF50; color: white; }
-        .saldo-negativo { color: red; }
-        .saldo-positivo { color: green; }
-        button { margin-top: 20px; padding: 10px 20px; background-color: #4CAF50; color: white; border: none; cursor: pointer; }
-        button:hover { background-color: #45a049; }
+        th { background-color: #1F5029; color: white; }
+        tr:nth-child(even) { background-color: #262A2E; color: white;} 
+        tr:nth-child(odd) { background-color: #212529; color: white;}
+        .total-row { background-color: #bdbdbd !important; font-weight: bold; color: white;}
+        .saldo-positivo { color: green; font-weight: bold; }
+        .saldo-negativo { color: red; font-weight: bold; }
     </style>
 </head>
 <body>
 
     <h2>Controle de Folgas dos Motoristas</h2>
     <input type="file" id="fileInput" />
-    <button id="exportBtn">Exportar para Excel</button>
+    <button onclick="exportarParaExcel()">Exportar para Excel</button>
+    
     <table id="resultTable">
         <thead>
             <tr>
@@ -69,18 +72,18 @@
         }
 
         function formatarData(data) {
-            const [mes, ano] = data.split('.');  // Recebe o formato MM.AAAA
-            return new Date(ano, mes - 1, 1);  // O mês precisa ser ajustado com -1 (pois Janeiro é 0 no JavaScript)
+            const [mes, ano] = data.split('.');
+            return new Date(ano, mes - 1, 1);
         }
 
         function gerarMesesEntre(inicio, fim) {
             let meses = [];
-            let dataAtual = new Date(inicio);  // Começa com a data de início fornecida
+            let dataAtual = new Date(inicio);
 
             while (dataAtual <= fim) {
                 const mesAno = `${String(dataAtual.getMonth() + 1).padStart(2, '0')}/${dataAtual.getFullYear()}`;
                 meses.push(mesAno);
-                dataAtual.setMonth(dataAtual.getMonth() + 1);  // Avança para o próximo mês
+                dataAtual.setMonth(dataAtual.getMonth() + 1);
             }
 
             return meses;
@@ -91,7 +94,6 @@
 
             let folgas = {};
 
-            // Lê a planilha e filtra apenas o motivo "Folga"
             data.forEach(row => {
                 if (row["Motivo"] === "Folga" && row["Data"] && row["Motorista"]) {
                     let motorista = row["Motorista"];
@@ -105,51 +107,65 @@
                 }
             });
 
-            preencherMesesFaltantes(folgas, intervalo);
+            preencherTabela(folgas, intervalo);
         }
 
-        function preencherMesesFaltantes(folgas, intervalo) {
+        function preencherTabela(folgas, intervalo) {
             let tbody = document.querySelector("#resultTable tbody");
             tbody.innerHTML = "";
 
             for (let motorista in folgas) {
                 let meses = gerarMesesEntre(intervalo.inicio, intervalo.fim);
                 let totalFolgas = 0;
+                let totalSaldo = 0;
 
                 meses.forEach(mesAno => {
                     let folgasTiradas = folgas[motorista][mesAno] || 0;
+                    let saldo = 4 - folgasTiradas; // Cada motorista tem direito a 4 folgas por mês
                     totalFolgas += folgasTiradas;
-
-                    let saldo = 4 - folgasTiradas;  // O saldo é a diferença entre o máximo de 4 folgas e as tiradas
-                    let saldoClasse = saldo < 0 ? "saldo-negativo" : "saldo-positivo"; // Definindo a classe com base no saldo
+                    totalSaldo += saldo;
 
                     let tr = document.createElement("tr");
                     tr.innerHTML = `
                         <td>${motorista}</td>
                         <td>${mesAno}</td>
                         <td>${folgasTiradas}</td>
-                        <td class="${saldoClasse}">${saldo}</td>
+                        <td class="${saldo < 0 ? 'saldo-negativo' : 'saldo-positivo'}">${saldo}</td>
                     `;
                     tbody.appendChild(tr);
                 });
 
-                // Adiciona a linha de total de folgas para o motorista
                 let trTotal = document.createElement("tr");
+                trTotal.classList.add("total-row");
                 trTotal.innerHTML = `
                     <td>${motorista}</td>
-                    <td><strong>Total de Folgas</strong></td>
+                    <td>Total</td>
                     <td>${totalFolgas}</td>
-                    <td></td>
+                    <td class="${totalSaldo < 0 ? 'saldo-negativo' : 'saldo-positivo'}">${totalSaldo}</td>
                 `;
                 tbody.appendChild(trTotal);
             }
         }
 
-        // Função para exportar a tabela para Excel
-        document.getElementById('exportBtn').addEventListener('click', function() {
-            let wb = XLSX.utils.table_to_book(document.getElementById('resultTable'), { sheet: 'Folgas' });
-            XLSX.writeFile(wb, 'Controle_de_Folgas.xlsx');
-        });
+        function exportarParaExcel() {
+            let table = document.getElementById("resultTable");
+            let wb = XLSX.utils.table_to_book(table, { sheet: "Folgas" });
+            XLSX.writeFile(wb, "Controle_de_Folgas.xlsx");
+        }
+
+        function filtrarTabela() {
+            let input = document.getElementById("searchInput").value.toLowerCase();
+            let rows = document.querySelectorAll("#resultTable tbody tr");
+
+            rows.forEach(row => {
+                let motorista = row.cells[0].innerText.toLowerCase();
+                if (motorista.includes(input) || row.cells[1].innerText === "Total") {
+                    row.style.display = "";
+                } else {
+                    row.style.display = "none";
+                }
+            });
+        }
     </script>
 
 </body>
