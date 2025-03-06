@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Controle de Folgas</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        h2 { text-align: center; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: center; }
+        th { background-color: #4CAF50; color: white; }
+    </style>
+</head>
+<body>
+
+    <h2>Controle de Folgas dos Motoristas</h2>
+    <input type="file" id="fileInput" />
+    <table id="resultTable">
+        <thead>
+            <tr>
+                <th>Motorista</th>
+                <th>Mês</th>
+                <th>Folgas Tiradas</th>
+            </tr>
+        </thead>
+        <tbody></tbody>
+    </table>
+
+    <script>
+        document.getElementById('fileInput').addEventListener('change', function(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const fileName = file.name;
+            const intervalo = extrairIntervalo(fileName);
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const data = new Uint8Array(e.target.result);
+                const workbook = XLSX.read(data, { type: 'array' });
+
+                const sheet = workbook.Sheets[workbook.SheetNames[0]];
+                const jsonData = XLSX.utils.sheet_to_json(sheet);
+
+                processData(jsonData, intervalo);
+            };
+            reader.readAsArrayBuffer(file);
+        });
+
+        function extrairIntervalo(nomeArquivo) {
+            const regex = /(\d{2}\.\d{4}) A (\d{2}\.\d{4})/;
+            const match = nomeArquivo.match(regex);
+
+            if (match) {
+                const [inicio, fim] = match.slice(1);
+                return { inicio: formatarData(inicio), fim: formatarData(fim) };
+            }
+
+            alert("Formato de nome de arquivo inválido! Use: 'FOLGAS 01.2024 A 03.2025'");
+            return null;
+        }
+
+        function formatarData(data) {
+            const [mes, ano] = data.split('.');  // Recebe o formato MM.AAAA
+            return new Date(ano, mes - 1, 1);  // O mês precisa ser ajustado com -1 (pois Janeiro é 0 no JavaScript)
+        }
+
+        function gerarMesesEntre(inicio, fim) {
+            let meses = [];
+            let dataAtual = new Date(inicio);  // Começa com a data de início fornecida
+
+            while (dataAtual <= fim) {
+                const mesAno = `${String(dataAtual.getMonth() + 1).padStart(2, '0')}/${dataAtual.getFullYear()}`;
+                meses.push(mesAno);
+                dataAtual.setMonth(dataAtual.getMonth() + 1);  // Avança para o próximo mês
+            }
+
+            return meses;
+        }
+
+        function processData(data, intervalo) {
+            if (!intervalo) return;
+
+            let folgas = {};
+
+            // Lê a planilha e filtra apenas o motivo "Folga"
+            data.forEach(row => {
+                if (row["Motivo"] === "Folga" && row["Data"] && row["Motorista"]) {
+                    let motorista = row["Motorista"];
+                    let [dia, mes, ano] = row["Data"].split("/"); 
+                    let mesAno = `${mes}/${ano}`;
+
+                    if (!folgas[motorista]) folgas[motorista] = {};
+                    if (!folgas[motorista][mesAno]) folgas[motorista][mesAno] = 0;
+
+                    folgas[motorista][mesAno]++;
+                }
+            });
+
+            preencherMesesFaltantes(folgas, intervalo);
+        }
+
+        function preencherMesesFaltantes(folgas, intervalo) {
+            let tbody = document.querySelector("#resultTable tbody");
+            tbody.innerHTML = "";
+
+            for (let motorista in folgas) {
+                let meses = gerarMesesEntre(intervalo.inicio, intervalo.fim);
+                let totalFolgas = 0;
+
+                meses.forEach(mesAno => {
+                    let folgasTiradas = folgas[motorista][mesAno] || 0;
+                    totalFolgas += folgasTiradas;
+
+                    let tr = document.createElement("tr");
+                    tr.innerHTML = `
+                        <td>${motorista}</td>
+                        <td>${mesAno}</td>
+                        <td>${folgasTiradas}</td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+
+                // Adiciona a linha de total de folgas para o motorista
+                let trTotal = document.createElement("tr");
+                trTotal.innerHTML = `
+                    <td>${motorista}</td>
+                    <td><strong>Total de Folgas</strong></td>
+                    <td>${totalFolgas}</td>
+                `;
+                tbody.appendChild(trTotal);
+            }
+        }
+    </script>
+
+</body>
+</html>
