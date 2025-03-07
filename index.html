@@ -6,25 +6,183 @@
     <title>Controle de Folgas</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <style>
-        body { font-family: Arial, sans-serif; padding: 20px; }
-        h2 { text-align: center; }
-        input, button { margin: 10px 0; padding: 10px; font-size: 16px; }
-        table { width: 100%; border-collapse: collapse; margin-top: 10px; border-radius: 20px;}
-        th, td { border: 1px solid #ddd; padding: 8px; text-align: center; }
-        th { background-color: #1F5029; color: white; }
-        tr:nth-child(even) { background-color: #262A2E; color: white;} 
-        tr:nth-child(odd) { background-color: #212529; color: white;}
-        .total-row { background-color: #bdbdbd !important; font-weight: bold; color: white;}
-        .saldo-positivo { color: green; font-weight: bold; }
-        .saldo-negativo { color: red; font-weight: bold; }
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            margin: 0;
+            background: linear-gradient(135deg, #1e293b, #0f172a);
+            color: #f1f5f9;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+        }
+
+        h2 {
+            text-align: center;
+            font-size: 2em;
+            color: #38bdf8;
+        }
+
+        input, button {
+            padding: 10px 15px;
+            font-size: 16px;
+            border: none;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+        }
+
+        input[type="file"], input[type="text"] {
+            background-color: #1e293b;
+            color: #f1f5f9;
+        }
+
+        button {
+            background-color: #38bdf8;
+            color: #0f172a;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+
+        button:hover {
+            background-color: #0284c7;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+            border-radius: 12px;
+            overflow: hidden;
+        }
+
+        th, td {
+            padding: 10px;
+            text-align: center;
+        }
+
+        th {
+            background-color: #0284c7;
+            color: #f1f5f9;
+        }
+
+        tr:nth-child(even) {
+            background-color: #1e293b;
+        }
+
+        tr:nth-child(odd) {
+            background-color: #334155;
+        }
+
+        .total-row {
+            background-color: #0f172a !important;
+            font-weight: bold;
+        }
+
+        .saldo-positivo {
+            color: #10b981;
+        }
+
+        .saldo-negativo {
+            color: #ef4444;
+        }
+
+        @media (max-width: 768px) {
+            table {
+                font-size: 12px;
+            }
+
+            input, button {
+                width: 100%;
+                text-align: center;
+            }
+        }
+
+        .opt {
+            padding: 7px 20px;
+            font-size: 16px;
+            border: solid #38BDF8 1.5px;
+            border-radius: 8px;
+            outline: none;
+        }
+
+        /* Estilos para o spinner */
+        .spinner {
+            width: 44px;
+            height: 44px;
+            animation: spinner-y0fdc1 2s infinite ease;
+            transform-style: preserve-3d;
+            margin-top: 20px;
+        }
+
+        .spinner > div {
+            background-color: rgba(0,77,255,0.2);
+            height: 100%;
+            position: absolute;
+            width: 100%;
+            border: 2px solid #004dff;
+        }
+
+        .spinner div:nth-of-type(1) {
+            transform: translateZ(-22px) rotateY(180deg);
+        }
+
+        .spinner div:nth-of-type(2) {
+            transform: rotateY(-270deg) translateX(50%);
+            transform-origin: top right;
+        }
+
+        .spinner div:nth-of-type(3) {
+            transform: rotateY(270deg) translateX(-50%);
+            transform-origin: center left;
+        }
+
+        .spinner div:nth-of-type(4) {
+            transform: rotateX(90deg) translateY(-50%);
+            transform-origin: top center;
+        }
+
+        .spinner div:nth-of-type(5) {
+            transform: rotateX(-90deg) translateY(50%);
+            transform-origin: bottom center;
+        }
+
+        .spinner div:nth-of-type(6) {
+            transform: translateZ(22px);
+        }
+
+        @keyframes spinner-y0fdc1 {
+            0% {
+                transform: rotate(45deg) rotateX(-25deg) rotateY(25deg);
+            }
+
+            50% {
+                transform: rotate(45deg) rotateX(-385deg) rotateY(25deg);
+            }
+
+            100% {
+                transform: rotate(45deg) rotateX(-385deg) rotateY(385deg);
+            }
+        }
+
     </style>
 </head>
 <body>
 
     <h2>Controle de Folgas dos Motoristas</h2>
+
     <input type="file" id="fileInput" />
+    <select class="opt" id="motoristaSelect" onchange="atualizarTabela()">
+        <option value="">Selecione um motorista</option>
+    </select>
     <button onclick="exportarParaExcel()">Exportar para Excel</button>
-    
+
+    <div id="spinnerContainer" style="display: none;">
+        <div class="spinner">
+            <div></div><div></div><div></div><div></div><div></div><div></div>
+        </div>
+    </div>
+
     <table id="resultTable">
         <thead>
             <tr>
@@ -37,7 +195,18 @@
         <tbody></tbody>
     </table>
 
+    <div class="pagination">
+        <button onclick="paginaAnterior()">Anterior</button>
+        <span id="paginaAtual"></span>
+        <button onclick="proximaPagina()">Próximo</button>
+    </div>
+
     <script>
+        let folgas = {};
+        let motoristas = [];
+        let paginaAtual = 0;
+        const motoristasPorPagina = 5;
+
         document.getElementById('fileInput').addEventListener('change', function(event) {
             const file = event.target.files[0];
             if (!file) return;
@@ -49,11 +218,14 @@
             reader.onload = function(e) {
                 const data = new Uint8Array(e.target.result);
                 const workbook = XLSX.read(data, { type: 'array' });
-
                 const sheet = workbook.Sheets[workbook.SheetNames[0]];
-                const jsonData = XLSX.utils.sheet_to_json(sheet);
+                const jsonData = XLSX.utils.sheet_to_json(sheet, { raw: true });
 
-                processData(jsonData, intervalo);
+                // Exibe o spinner e começa o processamento
+                document.getElementById('spinnerContainer').style.display = "block";
+
+                // Processa em intervalos de 1 minuto e meio (90 segundos)
+                processarEmIntervalos(jsonData, intervalo, 90);
             };
             reader.readAsArrayBuffer(file);
         });
@@ -61,12 +233,10 @@
         function extrairIntervalo(nomeArquivo) {
             const regex = /(\d{2}\.\d{4}) A (\d{2}\.\d{4})/;
             const match = nomeArquivo.match(regex);
-
             if (match) {
                 const [inicio, fim] = match.slice(1);
                 return { inicio: formatarData(inicio), fim: formatarData(fim) };
             }
-
             alert("Formato de nome de arquivo inválido! Use: 'FOLGAS 01.2024 A 03.2025'");
             return null;
         }
@@ -79,49 +249,89 @@
         function gerarMesesEntre(inicio, fim) {
             let meses = [];
             let dataAtual = new Date(inicio);
-
             while (dataAtual <= fim) {
                 const mesAno = `${String(dataAtual.getMonth() + 1).padStart(2, '0')}/${dataAtual.getFullYear()}`;
                 meses.push(mesAno);
                 dataAtual.setMonth(dataAtual.getMonth() + 1);
             }
-
             return meses;
         }
 
-        function processData(data, intervalo) {
+        function processarEmIntervalos(dados, intervalo, tempo) {
             if (!intervalo) return;
 
-            let folgas = {};
+            folgas = {};
+            motoristas = [];
 
-            data.forEach(row => {
-                if (row["Motivo"] === "Folga" && row["Data"] && row["Motorista"]) {
-                    let motorista = row["Motorista"];
-                    let [dia, mes, ano] = row["Data"].split("/"); 
-                    let mesAno = `${mes}/${ano}`;
+            // Divide os dados em pedaços
+            const tamanhoPeca = Math.floor(dados.length / (tempo / 2)); // Dividir os dados para processar em 1min30s
+            let indice = 0;
 
-                    if (!folgas[motorista]) folgas[motorista] = {};
-                    if (!folgas[motorista][mesAno]) folgas[motorista][mesAno] = 0;
+            // Função que processa cada intervalo
+            function processarIntervalo() {
+                const peca = dados.slice(indice * tamanhoPeca, (indice + 1) * tamanhoPeca);
 
-                    folgas[motorista][mesAno]++;
+                peca.forEach(row => {
+                    if (row["Motivo"] === "Folga" && row["Data"] && row["Motorista"]) {
+                        let motorista = row["Motorista"];
+                        let [dia, mes, ano] = row["Data"].split("/"); 
+                        let mesAno = `${mes}/${ano}`;
+
+                        if (!folgas[motorista]) folgas[motorista] = {};
+                        if (!folgas[motorista][mesAno]) folgas[motorista][mesAno] = 0;
+
+                        folgas[motorista][mesAno]++;
+                        if (!motoristas.includes(motorista)) motoristas.push(motorista);
+                    }
+                });
+
+                // Atualiza a interface após cada intervalo
+                atualizarSelect();
+                atualizarTabela();
+
+                indice++;
+
+                // Se ainda houver dados, continue o processamento
+                if (indice * tamanhoPeca < dados.length) {
+                    setTimeout(processarIntervalo, 0); // Continue processando sem travar a página
+                } else {
+                    // Oculta o spinner quando o processamento terminar
+                    document.getElementById('spinnerContainer').style.display = "none";
                 }
-            });
+            }
 
-            preencherTabela(folgas, intervalo);
+            // Começa o processamento do arquivo
+            processarIntervalo();
         }
 
-        function preencherTabela(folgas, intervalo) {
-            let tbody = document.querySelector("#resultTable tbody");
+        function atualizarSelect() {
+            const select = document.getElementById("motoristaSelect");
+            select.innerHTML = `<option value="">Selecione um motorista</option>`;
+            motoristas.sort().forEach(motorista => {
+                const option = document.createElement("option");
+                option.value = motorista;
+                option.textContent = motorista;
+                select.appendChild(option);
+            });
+        }
+
+        function atualizarTabela() {
+            const motoristaSelecionado = document.getElementById("motoristaSelect").value;
+            const tbody = document.querySelector("#resultTable tbody");
             tbody.innerHTML = "";
 
-            for (let motorista in folgas) {
-                let meses = gerarMesesEntre(intervalo.inicio, intervalo.fim);
+            let motoristasFiltrados = motoristaSelecionado
+                ? [motoristaSelecionado]
+                : motoristas.slice(paginaAtual * motoristasPorPagina, (paginaAtual + 1) * motoristasPorPagina);
+
+            motoristasFiltrados.forEach(motorista => {
+                let meses = Object.keys(folgas[motorista]).sort();
                 let totalFolgas = 0;
                 let totalSaldo = 0;
 
                 meses.forEach(mesAno => {
                     let folgasTiradas = folgas[motorista][mesAno] || 0;
-                    let saldo = 4 - folgasTiradas; // Cada motorista tem direito a 4 folgas por mês
+                    let saldo = 4 - folgasTiradas;
                     totalFolgas += folgasTiradas;
                     totalSaldo += saldo;
 
@@ -144,6 +354,22 @@
                     <td class="${totalSaldo < 0 ? 'saldo-negativo' : 'saldo-positivo'}">${totalSaldo}</td>
                 `;
                 tbody.appendChild(trTotal);
+            });
+
+            document.getElementById("paginaAtual").textContent = `Página ${paginaAtual + 1}`;
+        }
+
+        function paginaAnterior() {
+            if (paginaAtual > 0) {
+                paginaAtual--;
+                atualizarTabela();
+            }
+        }
+
+        function proximaPagina() {
+            if ((paginaAtual + 1) * motoristasPorPagina < motoristas.length) {
+                paginaAtual++;
+                atualizarTabela();
             }
         }
 
@@ -153,19 +379,6 @@
             XLSX.writeFile(wb, "Controle_de_Folgas.xlsx");
         }
 
-        function filtrarTabela() {
-            let input = document.getElementById("searchInput").value.toLowerCase();
-            let rows = document.querySelectorAll("#resultTable tbody tr");
-
-            rows.forEach(row => {
-                let motorista = row.cells[0].innerText.toLowerCase();
-                if (motorista.includes(input) || row.cells[1].innerText === "Total") {
-                    row.style.display = "";
-                } else {
-                    row.style.display = "none";
-                }
-            });
-        }
     </script>
 
 </body>
