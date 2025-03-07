@@ -226,6 +226,19 @@
         reader.readAsArrayBuffer(file);
     });
 
+    window.onload = function() {
+        // Verifica se já tem dados salvos
+        const folgasSalvas = localStorage.getItem('folgas');
+        const motoristasSalvos = localStorage.getItem('motoristas');
+
+        if (folgasSalvas && motoristasSalvos) {
+            folgas = JSON.parse(folgasSalvas);
+            motoristas = JSON.parse(motoristasSalvos);
+            atualizarSelect();
+            atualizarTabela({ inicio: new Date(), fim: new Date() }); // Passa um intervalo genérico
+        }
+    };
+
     function extrairIntervalo(nomeArquivo) {
         const regex = /(\d{2}\.\d{4}) A (\d{2}\.\d{4})/;
         const match = nomeArquivo.match(regex);
@@ -279,6 +292,10 @@
                     if (!motoristas.includes(motorista)) motoristas.push(motorista);
                 }
             });
+
+            // Salvar os dados no localStorage
+            localStorage.setItem('folgas', JSON.stringify(folgas));
+            localStorage.setItem('motoristas', JSON.stringify(motoristas));
 
             atualizarSelect();
             atualizarTabela(intervalo);
@@ -369,6 +386,7 @@
         let wb = XLSX.utils.table_to_book(table, { sheet: "Folgas" });
         XLSX.writeFile(wb, "Controle_de_Folgas.xlsx");
     }
+
 </script>
 
 </body>
