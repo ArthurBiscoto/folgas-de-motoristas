@@ -43,7 +43,7 @@
             background-color: #0284c7;
         }
         table {
-            width: 100%;
+            width: 95%;
             border-collapse: collapse;
             box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
             border-radius: 12px;
@@ -136,17 +136,28 @@
                 transform: rotate(45deg) rotateX(-385deg) rotateY(385deg);
             }
         }
+
+        /* Ajuste para os botões ficarem lado a lado com espaçamento */
+        .button-container {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            margin-bottom: 20px;
+        }
     </style>
 </head>
 <body>
 
 <h2>Controle de Folgas dos Motoristas</h2>
 
-<input type="file" id="fileInput" />
-<select class="opt" id="motoristaSelect" onchange="atualizarTabela()">
-    <option value="">Selecione um motorista</option>
-</select>
-<button onclick="exportarParaExcel()">Exportar para Excel</button>
+<div class="button-container">
+    <input type="file" id="fileInput" />
+    <select class="opt" id="motoristaSelect" onchange="atualizarTabela()">
+        <option value="">Selecione um motorista</option>
+    </select>
+    <button onclick="exportarParaExcel()">Exportar para Excel</button>
+    <button onclick="limparFiltros()">Limpar Filtros</button>
+</div>
 
 <div id="spinnerContainer" style="display: none;">
     <div class="spinner">
@@ -200,6 +211,12 @@
         };
         reader.readAsArrayBuffer(file);
     });
+
+
+    function limparFiltros() {
+        document.getElementById("motoristaSelect").value = "";
+        atualizarTabela(); // Atualiza a tabela para mostrar todos os motoristas
+    }
 
     function extrairIntervalo(nomeArquivo) {
         const regex = /(\d{2}\.\d{4}) A (\d{2}\.\d{4})/;
