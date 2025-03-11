@@ -357,12 +357,39 @@
             atualizarTabela();
         }
     }
-
     function exportarParaExcel() {
-        let table = document.getElementById("resultTable");
-        let wb = XLSX.utils.table_to_book(table, { sheet: "Folgas" });
-        XLSX.writeFile(wb, "Controle_de_Folgas.xlsx");
+        let wb = XLSX.utils.book_new();
+        let meses = gerarMesesEntre(intervaloGlobal.inicio, intervaloGlobal.fim);  // Gera todos os meses do período
+        let allData = [];
+
+        // Percorre todos os motoristas
+        motoristas.forEach(motorista => {
+            let totalFolgas = 0;
+            let totalSaldo = 0;
+
+            // Percorre todos os meses
+            meses.forEach(mesAno => {
+                let folgasTiradas = (folgas[motorista] && folgas[motorista][mesAno]) || 0;
+                let saldo = 4 - folgasTiradas;  // Assume que o limite de folgas é 4
+                totalFolgas += folgasTiradas;
+                totalSaldo += saldo;
+
+                // Adiciona os dados de cada linha
+                allData.push([motorista, mesAno, folgasTiradas, saldo]);
+            });
+
+            // Adiciona o total por motorista
+            allData.push([motorista, "Total", totalFolgas, totalSaldo]);
+        });
+
+        // Cria uma nova planilha com todos os dados
+        let ws = XLSX.utils.aoa_to_sheet([["Motorista", "Mês", "Folgas Tiradas", "Saldo de Folgas"], ...allData]);
+        XLSX.utils.book_append_sheet(wb, ws, "Folgas");
+
+        // Exporta o arquivo Excel
+        XLSX.writeFile(wb, "Controle_de_Folgas_Completo.xlsx");
     }
+
 </script>
 
 </body>
