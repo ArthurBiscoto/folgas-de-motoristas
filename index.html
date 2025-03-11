@@ -137,13 +137,28 @@
             }
         }
 
-        /* Ajuste para os botões ficarem lado a lado com espaçamento */
-        .button-container {
-            display: flex;
-            gap: 10px;
-            justify-content: center;
-            margin-bottom: 20px;
+        .folga-cell {
+            position: relative;
         }
+
+        .tooltip {
+            display: none;
+            position: absolute;
+            top: -30px;
+            left: 0;
+            background-color: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 5px;
+            border-radius: 5px;
+            font-size: 12px;
+            white-space: nowrap;
+        }
+
+        .folga-cell:hover .tooltip {
+            display: block;
+        }
+
+
     </style>
 </head>
 <body>
@@ -184,11 +199,12 @@
 </div>
 
 <script>
-    let folgas = {};
-    let motoristas = [];
+    let folgas = {}; // Contém as folgas por motorista e mês
+    let motoristas = []; // Lista de motoristas
     let paginaAtual = 0;
     const motoristasPorPagina = 5;
-    let intervaloGlobal; // Guarda o intervalo para uso posterior
+    let intervaloGlobal; // Armazena o intervalo
+    let tooltip = null; // Variável para armazenar a referência da "telinha" com dias de folga
 
     document.getElementById('fileInput').addEventListener('change', function(event) {
         const file = event.target.files[0];
@@ -206,17 +222,10 @@
             const jsonData = XLSX.utils.sheet_to_json(sheet, { raw: true });
 
             document.getElementById('spinnerContainer').style.display = "block";
-
             processarEmIntervalos(jsonData, intervalo, 90);
         };
         reader.readAsArrayBuffer(file);
     });
-
-
-    function limparFiltros() {
-        document.getElementById("motoristaSelect").value = "";
-        atualizarTabela(); // Atualiza a tabela para mostrar todos os motoristas
-    }
 
     function extrairIntervalo(nomeArquivo) {
         const regex = /(\d{2}\.\d{4}) A (\d{2}\.\d{4})/;
@@ -238,7 +247,6 @@
         let meses = [];
         let dataAtual = new Date(inicio);
 
-        // Ajusta o loop para incluir o mês final
         while (dataAtual <= fim) {
             const mesAno = `${String(dataAtual.getMonth() + 1).padStart(2, '0')}/${dataAtual.getFullYear()}`;
             meses.push(mesAno);
@@ -266,14 +274,12 @@
                     let [dia, mes, ano] = row["Data"].split("/"); 
                     let mesAno = `${mes}/${ano}`;
 
-                    if (!folgas[motorista])
-                        folgas[motorista] = {};
-                    if (!folgas[motorista][mesAno])
-                        folgas[motorista][mesAno] = 0;
+                    if (!folgas[motorista]) folgas[motorista] = {};
+                    if (!folgas[motorista][mesAno]) folgas[motorista][mesAno] = [];
 
-                    folgas[motorista][mesAno]++;
-                    if (!motoristas.includes(motorista))
-                        motoristas.push(motorista);
+                    folgas[motorista][mesAno].push(dia); // Armazena o dia de folga
+
+                    if (!motoristas.includes(motorista)) motoristas.push(motorista);
                 }
             });
 
@@ -310,7 +316,6 @@
             ? [motoristaSelecionado]
             : motoristas.slice(paginaAtual * motoristasPorPagina, (paginaAtual + 1) * motoristasPorPagina);
 
-        // Gera TODOS os meses do período, mesmo sem folgas
         const meses = gerarMesesEntre(intervaloGlobal.inicio, intervaloGlobal.fim);
 
         motoristasFiltrados.forEach(motorista => {
@@ -318,19 +323,28 @@
             let totalSaldo = 0;
 
             meses.forEach(mesAno => {
-                let folgasTiradas = (folgas[motorista] && folgas[motorista][mesAno]) || 0;
-                let saldo = 4 - folgasTiradas;
-                totalFolgas += folgasTiradas;
+                let folgasTiradas = (folgas[motorista] && folgas[motorista][mesAno]) || [];
+                let saldo = 4 - folgasTiradas.length;
+                totalFolgas += folgasTiradas.length;
                 totalSaldo += saldo;
 
                 let tr = document.createElement("tr");
                 tr.innerHTML = `
                     <td>${motorista}</td>
                     <td>${mesAno}</td>
-                    <td>${folgasTiradas}</td>
+                    <td class="folgasCell">${folgasTiradas.length}</td>
                     <td class="${saldo < 0 ? 'saldo-negativo' : 'saldo-positivo'}">${saldo}</td>
                 `;
                 tbody.appendChild(tr);
+
+                // Adiciona o evento de hover na célula de folgas
+                tr.querySelector(".folgasCell").addEventListener("mouseover", function() {
+                    mostrarToolTip(folgasTiradas);
+                });
+
+                tr.querySelector(".folgasCell").addEventListener("mouseleave", function() {
+                    esconderToolTip();
+                });
             });
 
             let trTotal = document.createElement("tr");
@@ -360,40 +374,75 @@
             atualizarTabela();
         }
     }
+
+    function mostrarToolTip(folgasTiradas) {
+        // Cria a "telinha" com os dias de folga
+        if (!tooltip) {
+            tooltip = document.createElement('div');
+            tooltip.style.position = 'absolute';
+            tooltip.style.padding = '5px 10px';
+            tooltip.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
+            tooltip.style.color = 'white';
+            tooltip.style.borderRadius = '5px';
+            tooltip.style.fontSize = '14px';
+            tooltip.style.zIndex = '9999';
+            document.body.appendChild(tooltip);
+        }
+
+        // Exibe os dias de folga
+        tooltip.textContent = `Dias de folga: ${folgasTiradas.join(', ')}`;
+
+        // Posiciona a "telinha" na ponta da seta do mouse
+        document.addEventListener('mousemove', function(event) {
+            tooltip.style.left = `${event.pageX + 10}px`;
+            tooltip.style.top = `${event.pageY + 10}px`;
+        });
+
+        tooltip.style.display = 'block'; // Mostra a tooltip
+    }
+
+    function esconderToolTip() {
+        if (tooltip) {
+            tooltip.style.display = 'none'; // Esconde a tooltip
+        }
+    }
+
     function exportarParaExcel() {
         let wb = XLSX.utils.book_new();
         let meses = gerarMesesEntre(intervaloGlobal.inicio, intervaloGlobal.fim);  // Gera todos os meses do período
         let allData = [];
 
-        // Percorre todos os motoristas
         motoristas.forEach(motorista => {
             let totalFolgas = 0;
             let totalSaldo = 0;
 
-            // Percorre todos os meses
             meses.forEach(mesAno => {
-                let folgasTiradas = (folgas[motorista] && folgas[motorista][mesAno]) || 0;
-                let saldo = 4 - folgasTiradas;  // Assume que o limite de folgas é 4
-                totalFolgas += folgasTiradas;
+                let folgasTiradas = (folgas[motorista] && folgas[motorista][mesAno]) || [];
+                let saldo = 4 - folgasTiradas.length;  // Assume que o limite de folgas é 4
+                totalFolgas += folgasTiradas.length;
                 totalSaldo += saldo;
 
-                // Adiciona os dados de cada linha
-                allData.push([motorista, mesAno, folgasTiradas, saldo]);
+                allData.push([motorista, mesAno, folgasTiradas.length, saldo]);
             });
 
-            // Adiciona o total por motorista
             allData.push([motorista, "Total", totalFolgas, totalSaldo]);
         });
 
-        // Cria uma nova planilha com todos os dados
         let ws = XLSX.utils.aoa_to_sheet([["Motorista", "Mês", "Folgas Tiradas", "Saldo de Folgas"], ...allData]);
         XLSX.utils.book_append_sheet(wb, ws, "Folgas");
 
-        // Exporta o arquivo Excel
         XLSX.writeFile(wb, "Controle_de_Folgas_Completo.xlsx");
     }
 
-</script>
+    function limparFiltros() {
+        // Limpa a seleção do motorista
+        document.getElementById("motoristaSelect").value = "";
 
+        // Atualiza a tabela para mostrar todos os motoristas novamente
+        paginaAtual = 0; // Reseta a página para a primeira
+        atualizarTabela();
+    }
+</script>
+    
 </body>
 </html>
