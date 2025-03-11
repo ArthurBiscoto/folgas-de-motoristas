@@ -193,38 +193,19 @@
     <tbody></tbody>
 </table>
 
+<div class="pagination">
+    <button onclick="paginaAnterior()">Anterior</button>
+    <span id="paginaAtual"></span>
+    <button onclick="proximaPagina()">Próximo</button>
+</div>
 
 <script>
-    let folgas = {}; 
-    let motoristas = [];
+    let folgas = {}; // Contém as folgas por motorista e mês
+    let motoristas = []; // Lista de motoristas
     let paginaAtual = 0;
     const motoristasPorPagina = 5;
-    let intervaloGlobal;
-    let tooltip = null;
-
-    // Cria o Web Worker via Blob URL
-    const workerBlob = new Blob([`
-        self.onmessage = function (e) {
-            importScripts("https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js");
-
-            const { file } = e.data;
-            const reader = new FileReader();
-
-            reader.onload = function (event) {
-                const data = new Uint8Array(event.target.result);
-                const workbook = XLSX.read(data, { type: "array" });
-                const sheet = workbook.Sheets[workbook.SheetNames[0]];
-                const jsonData = XLSX.utils.sheet_to_json(sheet, { raw: true });
-
-                self.postMessage({ status: "done", jsonData });
-            };
-
-            reader.readAsArrayBuffer(file);
-        };
-    `], { type: "application/javascript" });
-
-    const workerURL = URL.createObjectURL(workerBlob);
-    const worker = new Worker(workerURL);
+    let intervaloGlobal; // Armazena o intervalo
+    let tooltip = null; // Variável para armazenar a referência da "telinha" com dias de folga
 
     document.getElementById('fileInput').addEventListener('change', function(event) {
         const file = event.target.files[0];
@@ -232,18 +213,19 @@
 
         const fileName = file.name;
         const intervalo = extrairIntervalo(fileName);
-        intervaloGlobal = intervalo;
+        intervaloGlobal = intervalo; // Armazena o intervalo globalmente
 
-        document.getElementById('spinnerContainer').style.display = "block";
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            const data = new Uint8Array(e.target.result);
+            const workbook = XLSX.read(data, { type: 'array' });
+            const sheet = workbook.Sheets[workbook.SheetNames[0]];
+            const jsonData = XLSX.utils.sheet_to_json(sheet, { raw: true });
 
-        worker.postMessage({ file });
-
-        worker.onmessage = function (e) {
-            if (e.data.status === "done") {
-                processarEmIntervalos(e.data.jsonData, intervaloGlobal, 90);
-                document.getElementById('spinnerContainer').style.display = "none";
-            }
+            document.getElementById('spinnerContainer').style.display = "block";
+            processarEmIntervalos(jsonData, intervalo, 90);
         };
+        reader.readAsArrayBuffer(file);
     });
 
     function extrairIntervalo(nomeArquivo) {
@@ -296,7 +278,7 @@
                     if (!folgas[motorista]) folgas[motorista] = {};
                     if (!folgas[motorista][mesAno]) folgas[motorista][mesAno] = [];
 
-                    folgas[motorista][mesAno].push(dia);
+                    folgas[motorista][mesAno].push(dia); // Armazena o dia de folga
 
                     if (!motoristas.includes(motorista)) motoristas.push(motorista);
                 }
@@ -308,6 +290,8 @@
             indice++;
             if (indice * tamanhoPeca < dados.length) {
                 setTimeout(processarIntervalo, 0); 
+            } else {
+                document.getElementById('spinnerContainer').style.display = "none";
             }
         }
         processarIntervalo();
@@ -324,63 +308,85 @@
         });
     }
 
+    function limparFiltros() {
+        // Limpa a seleção do motorista
+        document.getElementById("motoristaSelect").value = "";
+
+        // Atualiza a tabela para mostrar todos os motoristas novamente
+        paginaAtual = 0; // Reseta a página para a primeira
+        atualizarTabela();
+    }
+
     function atualizarTabela() {
-    const motoristaSelecionado = document.getElementById("motoristaSelect").value;
-    const tbody = document.querySelector("#resultTable tbody");
-    tbody.innerHTML = "";
+        const motoristaSelecionado = document.getElementById("motoristaSelect").value;
+        const tbody = document.querySelector("#resultTable tbody");
+        tbody.innerHTML = "";
 
-    let motoristasFiltrados = motoristaSelecionado
-        ? [motoristaSelecionado]
-        : motoristas;
+        let motoristasFiltrados = motoristaSelecionado
+            ? [motoristaSelecionado]
+            : motoristas.slice(paginaAtual * motoristasPorPagina, (paginaAtual + 1) * motoristasPorPagina);
 
-    const meses = gerarMesesEntre(intervaloGlobal.inicio, intervaloGlobal.fim);
+        const meses = gerarMesesEntre(intervaloGlobal.inicio, intervaloGlobal.fim);
 
-    motoristasFiltrados.forEach(motorista => {
-        let totalFolgas = 0;
-        let totalSaldo = 0;
+        motoristasFiltrados.forEach(motorista => {
+            let totalFolgas = 0;
+            let totalSaldo = 0;
 
-        meses.forEach(mesAno => {
-            let folgasTiradas = (folgas[motorista] && folgas[motorista][mesAno]) || [];
-            let saldo = 4 - folgasTiradas.length;
-            totalFolgas += folgasTiradas.length;
-            totalSaldo += saldo;
+            meses.forEach(mesAno => {
+                let folgasTiradas = (folgas[motorista] && folgas[motorista][mesAno]) || [];
+                let saldo = 4 - folgasTiradas.length;
+                totalFolgas += folgasTiradas.length;
+                totalSaldo += saldo;
 
-            let tr = document.createElement("tr");
-            tr.innerHTML = `
+                let tr = document.createElement("tr");
+                tr.innerHTML = `
+                    <td>${motorista}</td>
+                    <td>${mesAno}</td>
+                    <td class="folgasCell">${folgasTiradas.length}</td>
+                    <td class="${saldo < 0 ? 'saldo-negativo' : 'saldo-positivo'}">${saldo}</td>
+                `;
+                tbody.appendChild(tr);
+
+                // Adiciona o evento de hover na célula de folgas
+                tr.querySelector(".folgasCell").addEventListener("mouseover", function() {
+                    mostrarToolTip(folgasTiradas);
+                });
+
+                tr.querySelector(".folgasCell").addEventListener("mouseleave", function() {
+                    esconderToolTip();
+                });
+            });
+
+            let trTotal = document.createElement("tr");
+            trTotal.classList.add("total-row");
+            trTotal.innerHTML = `
                 <td>${motorista}</td>
-                <td>${mesAno}</td>
-                <td class="folgasCell">${folgasTiradas.length}</td>
-                <td class="${saldo < 0 ? 'saldo-negativo' : 'saldo-positivo'}">${saldo}</td>
+                <td>Total</td>
+                <td>${totalFolgas}</td>
+                <td class="${totalSaldo < 0 ? 'saldo-negativo' : 'saldo-positivo'}">${totalSaldo}</td>
             `;
-            tbody.appendChild(tr);
-
-            tr.querySelector(".folgasCell").addEventListener("mouseover", function() {
-                mostrarToolTip(folgasTiradas);
-            });
-
-            tr.querySelector(".folgasCell").addEventListener("mouseleave", function() {
-                esconderToolTip();
-            });
+            tbody.appendChild(trTotal);
         });
 
-        let trTotal = document.createElement("tr");
-        trTotal.classList.add("total-row");
-        trTotal.innerHTML = `
-            <td>${motorista}</td>
-            <td>Total</td>
-            <td>${totalFolgas}</td>
-            <td class="${totalSaldo < 0 ? 'saldo-negativo' : 'saldo-positivo'}">${totalSaldo}</td>
-        `;
-        tbody.appendChild(trTotal);
-    });
+        document.getElementById("paginaAtual").textContent = `Página ${paginaAtual + 1}`;
+    }
 
-    // Atualiza o texto da página para "Página única", pois não tem mais paginação
-    document.getElementById("paginaAtual").textContent = `Página única`;
-}
+    function paginaAnterior() {
+        if (paginaAtual > 0) {
+            paginaAtual--;
+            atualizarTabela();
+        }
+    }
 
-
+    function proximaPagina() {
+        if ((paginaAtual + 1) * motoristasPorPagina < motoristas.length) {
+            paginaAtual++;
+            atualizarTabela();
+        }
+    }
 
     function mostrarToolTip(folgasTiradas) {
+        // Cria a "telinha" com os dias de folga
         if (!tooltip) {
             tooltip = document.createElement('div');
             tooltip.style.position = 'absolute';
@@ -393,28 +399,51 @@
             document.body.appendChild(tooltip);
         }
 
+        // Exibe os dias de folga
         tooltip.textContent = `Dias de folga: ${folgasTiradas.join(', ')}`;
 
+        // Posiciona a "telinha" na ponta da seta do mouse
         document.addEventListener('mousemove', function(event) {
             tooltip.style.left = `${event.pageX + 10}px`;
             tooltip.style.top = `${event.pageY + 10}px`;
         });
 
-        tooltip.style.display = 'block';
+        tooltip.style.display = 'block'; // Mostra a tooltip
     }
 
     function esconderToolTip() {
         if (tooltip) {
-            tooltip.style.display = 'none';
+            tooltip.style.display = 'none'; // Esconde a tooltip
         }
     }
 
-    function limparFiltros() {
-        document.getElementById("motoristaSelect").value = "";
-        paginaAtual = 0;
-        atualizarTabela();
-    }
+    function exportarParaExcel() {
+        let wb = XLSX.utils.book_new();
+        let meses = gerarMesesEntre(intervaloGlobal.inicio, intervaloGlobal.fim);  // Gera todos os meses do período
+        let allData = [];
 
+        motoristas.forEach(motorista => {
+            let totalFolgas = 0;
+            let totalSaldo = 0;
+
+            meses.forEach(mesAno => {
+                let folgasTiradas = (folgas[motorista] && folgas[motorista][mesAno]) || [];
+                let saldo = 4 - folgasTiradas.length;  // Assume que o limite de folgas é 4
+                totalFolgas += folgasTiradas.length;
+                totalSaldo += saldo;
+
+                allData.push([motorista, mesAno, folgasTiradas.length, saldo]);
+            });
+
+            allData.push([motorista, "Total", totalFolgas, totalSaldo]);
+        });
+
+        let ws = XLSX.utils.aoa_to_sheet([["Motorista", "Mês", "Folgas Tiradas", "Saldo de Folgas"], ...allData]);
+        XLSX.utils.book_append_sheet(wb, ws, "Folgas");
+
+        XLSX.writeFile(wb, "Controle_de_Folgas_Completo.xlsx");
+    }
 </script>
+
 </body>
 </html>
