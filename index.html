@@ -95,6 +95,7 @@
             animation: spinner-y0fdc1 2s infinite ease;
             transform-style: preserve-3d;
             margin-top: 20px;
+            margin-bottom: 35px;
         }
         .spinner > div {
             background-color: rgba(0,77,255,0.2);
@@ -192,78 +193,228 @@
     <tbody></tbody>
 </table>
 
-<div class="pagination">
-    <button onclick="paginaAnterior()">Anterior</button>
-    <span id="paginaAtual"></span>
-    <button onclick="proximaPagina()">Próximo</button>
-</div>
 
-<button onclick="limparFiltros()">Limpar filtros</button>
 <script>
-    function limparFiltros() {
-        // Limpa a seleção do motorista
-        document.getElementById("motoristaSelect").value = "";
+    let folgas = {}; 
+    let motoristas = [];
+    let paginaAtual = 0;
+    const motoristasPorPagina = 5;
+    let intervaloGlobal;
+    let tooltip = null;
 
-        // Atualiza a tabela para mostrar todos os motoristas novamente
-        paginaAtual = 0; // Reseta a página para a primeira
-        atualizarTabela();
+    // Cria o Web Worker via Blob URL
+    const workerBlob = new Blob([`
+        self.onmessage = function (e) {
+            importScripts("https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js");
+
+            const { file } = e.data;
+            const reader = new FileReader();
+
+            reader.onload = function (event) {
+                const data = new Uint8Array(event.target.result);
+                const workbook = XLSX.read(data, { type: "array" });
+                const sheet = workbook.Sheets[workbook.SheetNames[0]];
+                const jsonData = XLSX.utils.sheet_to_json(sheet, { raw: true });
+
+                self.postMessage({ status: "done", jsonData });
+            };
+
+            reader.readAsArrayBuffer(file);
+        };
+    `], { type: "application/javascript" });
+
+    const workerURL = URL.createObjectURL(workerBlob);
+    const worker = new Worker(workerURL);
+
+    document.getElementById('fileInput').addEventListener('change', function(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+
+        const fileName = file.name;
+        const intervalo = extrairIntervalo(fileName);
+        intervaloGlobal = intervalo;
+
+        document.getElementById('spinnerContainer').style.display = "block";
+
+        worker.postMessage({ file });
+
+        worker.onmessage = function (e) {
+            if (e.data.status === "done") {
+                processarEmIntervalos(e.data.jsonData, intervaloGlobal, 90);
+                document.getElementById('spinnerContainer').style.display = "none";
+            }
+        };
+    });
+
+    function extrairIntervalo(nomeArquivo) {
+        const regex = /(\d{2}\.\d{4}) A (\d{2}\.\d{4})/;
+        const match = nomeArquivo.match(regex);
+        if (match) {
+            const [inicio, fim] = match.slice(1);
+            return { inicio: formatarData(inicio), fim: formatarData(fim) };
+        }
+        alert("Formato de nome de arquivo inválido! Use: 'FOLGAS 01.2024 A 03.2025'");
+        return null;
+    }
+
+    function formatarData(data) {
+        const [mes, ano] = data.split('.');
+        return new Date(ano, mes - 1, 1);
+    }
+
+    function gerarMesesEntre(inicio, fim) {
+        let meses = [];
+        let dataAtual = new Date(inicio);
+
+        while (dataAtual <= fim) {
+            const mesAno = `${String(dataAtual.getMonth() + 1).padStart(2, '0')}/${dataAtual.getFullYear()}`;
+            meses.push(mesAno);
+            dataAtual.setMonth(dataAtual.getMonth() + 1);
+        }
+
+        return meses;
+    }
+
+    function processarEmIntervalos(dados, intervalo, tempo) {
+        if (!intervalo) return;
+
+        folgas = {};
+        motoristas = [];
+
+        const tamanhoPeca = Math.floor(dados.length / (tempo / 2)); 
+        let indice = 0;
+
+        function processarIntervalo() {
+            const peca = dados.slice(indice * tamanhoPeca, (indice + 1) * tamanhoPeca);
+
+            peca.forEach(row => {
+                if (row["Motivo"] === "Folga" && row["Data"] && row["Motorista"]) {
+                    let motorista = row["Motorista"];
+                    let [dia, mes, ano] = row["Data"].split("/"); 
+                    let mesAno = `${mes}/${ano}`;
+
+                    if (!folgas[motorista]) folgas[motorista] = {};
+                    if (!folgas[motorista][mesAno]) folgas[motorista][mesAno] = [];
+
+                    folgas[motorista][mesAno].push(dia);
+
+                    if (!motoristas.includes(motorista)) motoristas.push(motorista);
+                }
+            });
+
+            atualizarSelect();
+            atualizarTabela();
+
+            indice++;
+            if (indice * tamanhoPeca < dados.length) {
+                setTimeout(processarIntervalo, 0); 
+            }
+        }
+        processarIntervalo();
+    }
+
+    function atualizarSelect() {
+        const select = document.getElementById("motoristaSelect");
+        select.innerHTML = '<option value="">Selecione um motorista</option>';
+        motoristas.sort().forEach(motorista => {
+            const option = document.createElement("option");
+            option.value = motorista;
+            option.textContent = motorista;
+            select.appendChild(option);
+        });
     }
 
     function atualizarTabela() {
-        const motoristaSelecionado = document.getElementById("motoristaSelect").value;
-        const tbody = document.querySelector("#resultTable tbody");
-        tbody.innerHTML = "";
+    const motoristaSelecionado = document.getElementById("motoristaSelect").value;
+    const tbody = document.querySelector("#resultTable tbody");
+    tbody.innerHTML = "";
 
-        let motoristasFiltrados = motoristaSelecionado
-            ? [motoristaSelecionado]
-            : motoristas.slice(paginaAtual * motoristasPorPagina, (paginaAtual + 1) * motoristasPorPagina);
+    let motoristasFiltrados = motoristaSelecionado
+        ? [motoristaSelecionado]
+        : motoristas;
 
-        const meses = gerarMesesEntre(intervaloGlobal.inicio, intervaloGlobal.fim);
+    const meses = gerarMesesEntre(intervaloGlobal.inicio, intervaloGlobal.fim);
 
-        motoristasFiltrados.forEach(motorista => {
-            let totalFolgas = 0;
-            let totalSaldo = 0;
+    motoristasFiltrados.forEach(motorista => {
+        let totalFolgas = 0;
+        let totalSaldo = 0;
 
-            meses.forEach(mesAno => {
-                let folgasTiradas = (folgas[motorista] && folgas[motorista][mesAno]) || [];
-                let saldo = 4 - folgasTiradas.length;
-                totalFolgas += folgasTiradas.length;
-                totalSaldo += saldo;
+        meses.forEach(mesAno => {
+            let folgasTiradas = (folgas[motorista] && folgas[motorista][mesAno]) || [];
+            let saldo = 4 - folgasTiradas.length;
+            totalFolgas += folgasTiradas.length;
+            totalSaldo += saldo;
 
-                let tr = document.createElement("tr");
-                tr.innerHTML = `
-                    <td>${motorista}</td>
-                    <td>${mesAno}</td>
-                    <td class="folgasCell">${folgasTiradas.length}</td>
-                    <td class="${saldo < 0 ? 'saldo-negativo' : 'saldo-positivo'}">${saldo}</td>
-                `;
-                tbody.appendChild(tr);
+            let tr = document.createElement("tr");
+            tr.innerHTML = `
+                <td>${motorista}</td>
+                <td>${mesAno}</td>
+                <td class="folgasCell">${folgasTiradas.length}</td>
+                <td class="${saldo < 0 ? 'saldo-negativo' : 'saldo-positivo'}">${saldo}</td>
+            `;
+            tbody.appendChild(tr);
 
-                // Adiciona o evento de hover na célula de folgas
-                tr.querySelector(".folgasCell").addEventListener("mouseover", function() {
-                    mostrarToolTip(folgasTiradas);
-                });
-
-                tr.querySelector(".folgasCell").addEventListener("mouseleave", function() {
-                    esconderToolTip();
-                });
+            tr.querySelector(".folgasCell").addEventListener("mouseover", function() {
+                mostrarToolTip(folgasTiradas);
             });
 
-            let trTotal = document.createElement("tr");
-            trTotal.classList.add("total-row");
-            trTotal.innerHTML = `
-                <td>${motorista}</td>
-                <td>Total</td>
-                <td>${totalFolgas}</td>
-                <td class="${totalSaldo < 0 ? 'saldo-negativo' : 'saldo-positivo'}">${totalSaldo}</td>
-            `;
-            tbody.appendChild(trTotal);
+            tr.querySelector(".folgasCell").addEventListener("mouseleave", function() {
+                esconderToolTip();
+            });
         });
 
-        document.getElementById("paginaAtual").textContent = `Página ${paginaAtual + 1}`;
-    }
-</script>
+        let trTotal = document.createElement("tr");
+        trTotal.classList.add("total-row");
+        trTotal.innerHTML = `
+            <td>${motorista}</td>
+            <td>Total</td>
+            <td>${totalFolgas}</td>
+            <td class="${totalSaldo < 0 ? 'saldo-negativo' : 'saldo-positivo'}">${totalSaldo}</td>
+        `;
+        tbody.appendChild(trTotal);
+    });
 
-    
+    // Atualiza o texto da página para "Página única", pois não tem mais paginação
+    document.getElementById("paginaAtual").textContent = `Página única`;
+}
+
+
+
+    function mostrarToolTip(folgasTiradas) {
+        if (!tooltip) {
+            tooltip = document.createElement('div');
+            tooltip.style.position = 'absolute';
+            tooltip.style.padding = '5px 10px';
+            tooltip.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
+            tooltip.style.color = 'white';
+            tooltip.style.borderRadius = '5px';
+            tooltip.style.fontSize = '14px';
+            tooltip.style.zIndex = '9999';
+            document.body.appendChild(tooltip);
+        }
+
+        tooltip.textContent = `Dias de folga: ${folgasTiradas.join(', ')}`;
+
+        document.addEventListener('mousemove', function(event) {
+            tooltip.style.left = `${event.pageX + 10}px`;
+            tooltip.style.top = `${event.pageY + 10}px`;
+        });
+
+        tooltip.style.display = 'block';
+    }
+
+    function esconderToolTip() {
+        if (tooltip) {
+            tooltip.style.display = 'none';
+        }
+    }
+
+    function limparFiltros() {
+        document.getElementById("motoristaSelect").value = "";
+        paginaAtual = 0;
+        atualizarTabela();
+    }
+
+</script>
 </body>
 </html>
